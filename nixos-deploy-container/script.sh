@@ -31,7 +31,7 @@ done
 shift $((OPTIND - 1))
 
 if [ $# -lt 2 ]; then
-  echo "Usage: deploy-container [-v] <machine> <target> [container]" >&2
+  echo "Usage: nixos-deploy-container [-v] <machine> <target> [container]" >&2
   exit 1
 fi
 

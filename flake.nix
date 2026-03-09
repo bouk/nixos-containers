@@ -22,14 +22,18 @@
         guest = import ./modules/guest.nix;
       };
 
+      overlays.default = final: prev: {
+        nixos-deploy-container = final.callPackage ./nixos-deploy-container/package.nix { };
+      };
+
       packages = forAllSystems (
         system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs { inherit system; overlays = [ self.overlays.default ]; };
         in
         {
-          nixos-deploy-container = pkgs.callPackage ./nixos-deploy-container/package.nix { };
-          default = self.packages.${system}.nixos-deploy-container;
+          nixos-deploy-container = pkgs.nixos-deploy-container;
+          default = pkgs.nixos-deploy-container;
         }
       );
     };

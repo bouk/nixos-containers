@@ -39,6 +39,8 @@ in
   };
 
   config = {
+    networking.useNetworkd = true;
+
     systemd.services = mapAttrs' (
       name: value:
       nameValuePair "systemd-nspawn@${name}" (mkMerge [

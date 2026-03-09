@@ -18,7 +18,7 @@ On reload, the running container's switches to the new configuration without a f
 
 ```nix
 inputs = {
-  nixos-containers.url = "github:bouk/nixos-containers";
+  bouk-nixos-containers.url = "github:bouk/nixos-containers";
 };
 ```
 
@@ -29,7 +29,7 @@ Import the host module in your host NixOS configuration and declare containers:
 ```nix
 { inputs, ... }:
 {
-  imports = [ inputs.nixos-containers.nixosModules.host ];
+  imports = [ inputs.bouk-nixos-containers.nixosModules.host ];
 
   bouk.containers = {
     mycontainer = {
@@ -65,7 +65,7 @@ Import the guest module in the container's NixOS configuration:
 ```nix
 { inputs, ... }:
 {
-  imports = [ inputs.nixos-containers.nixosModules.guest ];
+  imports = [ inputs.bouk-nixos-containers.nixosModules.guest ];
 }
 ```
 
@@ -85,6 +85,51 @@ nixosConfigurations = {
     ];
   };
 };
+```
+
+## Example
+
+This example sets up a container named `mycontainer` that serves "hello world!" via nginx, with the host proxying to it.
+
+### Guest configuration (`containers/mycontainer.nix`)
+
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.bouk-nixos-containers.nixosModules.guest ];
+
+  services.nginx = {
+    enable = true;
+    virtualHosts."mycontainer" = {
+      locations."/" = {
+        return = "200 'hello world!'";
+        extraConfig = "add_header Content-Type text/plain;";
+      };
+    };
+  };
+
+  networking.firewall.allowedTCPPorts = [ 80 ];
+}
+```
+
+### Host configuration
+
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.bouk-nixos-containers.nixosModules.host ];
+
+  bouk.containers.mycontainer = { };
+
+  services.nginx = {
+    enable = true;
+    virtualHosts."example.com" = {
+      locations."/" = {
+        proxyPass = "http://mycontainer";
+      };
+    };
+  };
+}
 ```
 
 ## Deploying

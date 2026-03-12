@@ -9,6 +9,8 @@ with lib;
 
 let
   cfg = config.bouk.containers;
+
+  containersWithDeployGroup = filterAttrs (_: value: value.deployGroup != "root") cfg;
 in
 
 {
@@ -29,6 +31,11 @@ in
                 default = { };
                 description = "Options to set in the container's nspawn config";
               };
+              deployGroup = mkOption {
+                type = types.str;
+                default = "root";
+                description = "Group allowed to deploy this container (write profile dir + restart service)";
+              };
             };
           }
         )
@@ -39,6 +46,11 @@ in
   };
 
   config = {
+    assertions = mapAttrsToList (name: value: {
+      assertion = hasAttr value.deployGroup config.users.groups;
+      message = "bouk.containers.${name}.deployGroup: group \"${value.deployGroup}\" does not exist in users.groups";
+    }) containersWithDeployGroup;
+
     networking.useNetworkd = true;
 
     systemd.services = mapAttrs' (
@@ -62,11 +74,39 @@ in
       ])
     ) cfg;
 
-    systemd.tmpfiles.rules = flatten (
-      mapAttrsToList (name: cfg: [
-        "d /nix/var/nix/profiles/per-container/${name} 0755 root root -"
+    systemd.tmpfiles.rules = flatten ([
+      "d /nix/var/nix/profiles/per-container 0755 root root -"
+    ] ++ mapAttrsToList (name: value: [
+        "d /nix/var/nix/profiles/per-container/${name} 0775 root ${value.deployGroup} -"
         "d /var/lib/machines/${name} 0755 root root -"
       ]) cfg
+    );
+
+    security.polkit.enable = mkIf (containersWithDeployGroup != { }) true;
+
+    security.polkit.extraConfig = concatStrings (
+      mapAttrsToList (name: value: ''
+        // Allow the ${value.deployGroup} group to restart the ${name} container
+        // (used by the deploy-container script after updating the system profile)
+        polkit.addRule(function(action, subject) {
+          if (action.id === "org.freedesktop.systemd1.manage-units" &&
+              action.lookup("unit") === "systemd-nspawn@${name}.service" &&
+              subject.isInGroup(${builtins.toJSON value.deployGroup})) {
+            return polkit.Result.YES;
+          }
+        });
+        // Allow the ${value.deployGroup} group to open a shell inside the ${name} container
+        // (via machinectl shell / machinectl login)
+        polkit.addRule(function(action, subject) {
+          if ((action.id === "org.freedesktop.machine1.shell" ||
+               action.id === "org.freedesktop.machine1.login" ||
+               action.id === "org.freedesktop.machine1.manage-machines") &&
+              action.lookup("machine") === ${builtins.toJSON name} &&
+              subject.isInGroup(${builtins.toJSON value.deployGroup})) {
+            return polkit.Result.YES;
+          }
+        });
+      '') containersWithDeployGroup
     );
 
     systemd.nspawn = mapAttrs (
